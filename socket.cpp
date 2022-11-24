@@ -76,7 +76,7 @@ string getRequest(string &domain, string &filePath, string &fileName,
         requestMessage.insert(0, "/");
     if (type == linkType::unknown && filePath.empty())
         filePath = "/";
-    requestMessage.insert(0, method + " " + filePath+fileName);
+    requestMessage.insert(0, method + " " + filePath + fileName);
     requestMessage += keepAlive ? "keep-alive\r\n" : "close\r\n";
     requestMessage += "Host: " + domain + "\r\n\r\n";
     return requestMessage;
@@ -244,7 +244,7 @@ class Socket {
         return true;
     }
 
-    bool download(string &url, string path ) {
+    bool download(string &url, string path) {
         bool closed;
         string filePath, addressString, fileName, request, html;
         ofstream fout;
@@ -262,13 +262,16 @@ class Socket {
             return false;
         switch (type) {
         case linkType::file:
-            fout.open(path + ((path=="./")?(domain + "_"):"") + fileName, ios::binary);
+            fout.open(path + ((path == "./") ? (domain + "_") : "") + fileName,
+                      ios::binary);
             break;
         case linkType::folder:
         case linkType::unknown:
             if (fileName.empty())
                 fileName = "index";
-            fout.open(path + ((path=="./")?(domain + "_"):"") + fileName + ".html", ios::binary);
+            fout.open(path + ((path == "./") ? (domain + "_") : "") + fileName +
+                          ".html",
+                      ios::binary);
         }
         if (!readResponse(fout))
             return false;
@@ -280,7 +283,7 @@ class Socket {
             string str = ss.str();
             vector<string> links = getLinksOfFolder(url, str);
             for (string &link : links)
-                this->addToQueue(link, path + domain+"_"+fileName + "/");
+                this->addToQueue(link, path + domain + "_" + fileName + "/");
         }
         return true;
     }
@@ -307,24 +310,13 @@ class Socket {
 
 int main(int argc, char *argv[]) {
     vector<Socket> sockets;
-    /* string domain, filePath, fileName; */
-    /* linkType type; */
     if (argc < 2) {
         cout << "Usage: " << argv[0] << " [url1] [url2]..\n";
         return 0;
-    } else {
-        for (int i = 1; i < argc; i++) {
-            sockets.push_back(Socket());
-            sockets.back().addToQueue(argv[i]);
-            /* int j; */
-            /* addressProcess(argv[i], domain, filePath, fileName, type); */
-            /* for (j = 0; j < sockets.size() && sockets[j].domain != domain; j++) */
-            /*     ; */
-            /* if (j == sockets.size()) { */
-            /*     sockets.push_back(Socket(domain)); */
-            /* } */
-            /* sockets[j].addToQueue(argv[i]); */
-        }
+    }
+    for (int i = 1; i < argc; i++) {
+        sockets.push_back(Socket());
+        sockets.back().addToQueue(argv[i]);
     }
     vector<future<bool>> socketStatus;
     for (Socket &s : sockets)
