@@ -143,7 +143,7 @@ class Socket {
     bool connect(addrinfo *addr) {
 #ifdef WIN32
         u_long nonBlock = 1;
-        ioctlsocket(sockfd, FIONBIO, nonBlock);
+        ioctlsocket(sockfd, FIONBIO, &nonBlock);
 #else
         fcntl(sockfd, F_SETFL, O_NONBLOCK);
 #endif
@@ -154,7 +154,11 @@ class Socket {
             pfds[0].fd = sockfd;
             /* cout << "Connecting... "; */
             connected = !::connect(sockfd, p->ai_addr, p->ai_addrlen);
-            int numEvent = poll(pfds, 1, timeout);
+ #ifdef WIN32
+            int numEvent = WSAPoll(pfds, 1, timeout);
+#else
+           int numEvent = poll(pfds, 1, timeout);
+#endif
             if (numEvent && pfds[0].revents & POLLOUT) {
                 /* cout << "connected\n"; */
                 connected = true;
@@ -177,12 +181,16 @@ class Socket {
         pollfd pfds[1];
         pfds[0].fd = sockfd;
         pfds[0].events = POLLOUT;
-        int numEvent = poll(pfds, 1, timeout);
-        if (numEvent && pfds[0].revents & POLLOUT) {
-            ::send(sockfd, request.c_str(), request.length(), 0);
-            status = true;
-        }
-        return status;
+ #ifdef WIN32
+           int numEvent = WSAPoll(pfds, 1, timeout);
+#else
+           int numEvent = poll(pfds, 1, timeout);
+#endif
+           if (numEvent && pfds[0].revents & POLLOUT) {
+               ::send(sockfd, request.c_str(), request.length(), 0);
+               status = true;
+           }
+           return status;
     }
 
     bool readResponse(ostream &fout) {
@@ -193,7 +201,11 @@ class Socket {
         pfds[0].events = POLLIN;
         while (!done) {
             if (bufferSize - cached > 0) {
-                int numEvent = poll(pfds, 1, timeout);
+ #ifdef WIN32
+           int numEvent = WSAPoll(pfds, 1, timeout);
+#else
+           int numEvent = poll(pfds, 1, timeout);
+#endif
                 if (numEvent && pfds[0].revents & POLLIN) {
                     n = recv(sockfd, &buffer[cached], bufferSize - cached, 0);
                     cached += n;
@@ -309,13 +321,18 @@ class Socket {
 };
 
 int main(int argc, char *argv[]) {
+#ifdef WIN32
+    WSADATA d;
+if (WSAStartup(MAKEWORD(2, 2), &d)) {
+    fprintf(stderr, "Failed to initialize.\n");
+}
+#endif
     vector<Socket> sockets;
     if (argc < 2) {
         cout << "Usage: " << argv[0] << " [url1] [url2]..\n";
         return 0;
     }
-    for (int i = 1; i < argc; i++) {
-        sockets.push_back(Socket());
+    for (int i = 1; i < argc; i++) {        sockets.push_back(Socket());
         sockets.back().addToQueue(argv[i]);
     }
     vector<future<bool>> socketStatus;
