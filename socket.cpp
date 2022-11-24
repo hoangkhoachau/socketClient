@@ -154,10 +154,10 @@ class Socket {
             pfds[0].fd = sockfd;
             /* cout << "Connecting... "; */
             connected = !::connect(sockfd, p->ai_addr, p->ai_addrlen);
- #ifdef WIN32
+#ifdef WIN32
             int numEvent = WSAPoll(pfds, 1, timeout);
 #else
-           int numEvent = poll(pfds, 1, timeout);
+            int numEvent = poll(pfds, 1, timeout);
 #endif
             if (numEvent && pfds[0].revents & POLLOUT) {
                 /* cout << "connected\n"; */
@@ -172,7 +172,7 @@ class Socket {
 
     bool connect(string domain) {
         addrinfo *t = (resolveDomain(domain));
-        this->domain = domain;
+        if (!t) return false;
         return connect(t);
     }
 
@@ -181,16 +181,16 @@ class Socket {
         pollfd pfds[1];
         pfds[0].fd = sockfd;
         pfds[0].events = POLLOUT;
- #ifdef WIN32
-           int numEvent = WSAPoll(pfds, 1, timeout);
+#ifdef WIN32
+        int numEvent = WSAPoll(pfds, 1, timeout);
 #else
-           int numEvent = poll(pfds, 1, timeout);
+        int numEvent = poll(pfds, 1, timeout);
 #endif
-           if (numEvent && pfds[0].revents & POLLOUT) {
-               ::send(sockfd, request.c_str(), request.length(), 0);
-               status = true;
-           }
-           return status;
+        if (numEvent && pfds[0].revents & POLLOUT) {
+            ::send(sockfd, request.c_str(), request.length(), 0);
+            status = true;
+        }
+        return status;
     }
 
     bool readResponse(ostream &fout) {
@@ -201,15 +201,15 @@ class Socket {
         pfds[0].events = POLLIN;
         while (!done) {
             if (bufferSize - cached > 0) {
- #ifdef WIN32
-           int numEvent = WSAPoll(pfds, 1, timeout);
+#ifdef WIN32
+                int numEvent = WSAPoll(pfds, 1, timeout);
 #else
-           int numEvent = poll(pfds, 1, timeout);
+                int numEvent = poll(pfds, 1, timeout);
 #endif
                 if (numEvent && pfds[0].revents & POLLIN) {
                     n = recv(sockfd, &buffer[cached], bufferSize - cached, 0);
                     cached += n;
-                    /* cout << n << '\n'; */
+                    cout << n << '\n';
                 } else
                     return false;
                 contentDownloaded += n;
@@ -257,7 +257,6 @@ class Socket {
     }
 
     bool download(string &url, string path) {
-        bool closed;
         string filePath, addressString, fileName, request, html;
         ofstream fout;
         linkType type;
@@ -265,10 +264,9 @@ class Socket {
             filesystem::create_directory(path);
         addressProcess(url, domain, filePath, fileName, type);
         if (!this->connected)
-            connect(domain);
-        closed = downloadQueue.size() == 1 && type != linkType::folder;
+            if (!connect(domain)) return false;
         cout << fileName << ' ' << filePath << '\n';
-        request = getRequest(domain, filePath, fileName, "GET", !closed, type);
+        request = getRequest(domain, filePath, fileName, "GET", true, type);
         /* cout << request << '\n'; */
         if (!sendRequest(request))
             return false;
@@ -323,19 +321,22 @@ class Socket {
 int main(int argc, char *argv[]) {
 #ifdef WIN32
     WSADATA d;
-if (WSAStartup(MAKEWORD(2, 2), &d)) {
-    fprintf(stderr, "Failed to initialize.\n");
-}
+    if (WSAStartup(MAKEWORD(2, 2), &d)) 
+        return 0;
 #endif
     vector<Socket> sockets;
     if (argc < 2) {
         cout << "Usage: " << argv[0] << " [url1] [url2]..\n";
         return 0;
     }
-    for (int i = 1; i < argc; i++) {        sockets.push_back(Socket());
+    for (int i = 1; i < argc; i++) {
+        sockets.push_back(Socket());
         sockets.back().addToQueue(argv[i]);
     }
     vector<future<bool>> socketStatus;
     for (Socket &s : sockets)
         socketStatus.push_back(async(launch::async, &Socket::processQueue, &s));
+    for (int i=0;i<socketStatus.size();i++)
+        if (!socketStatus[i].get()) cout << "SOCKET "<< i << " FAILED!\n";
+    return 0;
 }
