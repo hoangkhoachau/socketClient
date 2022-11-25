@@ -17,7 +17,8 @@ vector<string> getLinksOfFolder(string &url, string html) {
     while (lastFound != -1) {
         lastFound = html.find("href=\"", lastFound + 6);
         quote = html.find('"', lastFound + 6);
-        if (lastFound != -1 && isalnum(html[lastFound + 6]))
+        if (lastFound != -1 && isalnum(html[lastFound + 6]) &&
+            html.substr(lastFound + 6, 4) != "http")
             links.push_back(url +
                             html.substr(lastFound + 6, quote - lastFound - 6));
     }
