@@ -113,10 +113,6 @@ class Socket {
     string domain;
 
     Socket() {
-#ifdef WIN32
-        WSADATA d;
-        WSAStartup(MAKEWORD(2, 2), &d);
-#endif
         timeout = 5000;
         bufferSize = 2 * 1024 * 1024;
         buffer = string(bufferSize, 0);
@@ -126,7 +122,6 @@ class Socket {
     ~Socket() {
 #ifdef WIN32
         closesocket(sockfd);
-        WSACleanup();
 #else
         close(sockfd);
 #endif
@@ -292,6 +287,10 @@ class Socket {
     }
 
     bool processQueue() {
+#ifdef WIN32
+        WSADATA d;
+        WSAStartup(MAKEWORD(2, 2), &d);
+#endif
         int status = false;
         while (!downloadQueue.empty()) {
             status = download(downloadQueue.front().first,
@@ -300,6 +299,9 @@ class Socket {
                 cout << domain << "\033[91mtimeout\033[0m\n";
             downloadQueue.pop();
         }
+#ifdef WIN32
+        WSACleanup();
+#endif
         return status;
     };
 
@@ -310,11 +312,6 @@ class Socket {
 };
 
 int main(int argc, char *argv[]) {
-#ifdef WIN32
-    WSADATA d;
-    if (WSAStartup(MAKEWORD(2, 2), &d))
-        return 0;
-#endif
     vector<Socket> sockets;
     if (argc < 2) {
         cout << "Usage: " << argv[0] << " [url1] [url2]..\n";
