@@ -11,7 +11,7 @@ using namespace std;
 
 enum class linkType { folder, file, unknown };
 
-vector<string> getLinksOfFolder(string &url, string &html) {
+vector<string> getLinksOfFolder(string &url, string html) {
     int lastFound = 0, quote = 0;
     vector<string> links;
     while (lastFound != -1) {
@@ -36,11 +36,6 @@ addrinfo *resolveDomain(string domain) {
         return NULL;
     }
     return res;
-}
-
-void writeString(string &buffer, int start, int end, ostream &fout, bool &done,
-                 int &contentDownloaded, int &contentLength) {
-    fout.write(&buffer[start], end - start);
 }
 
 void writeContentLength(string &buffer, int start, int end, ostream &fout,
@@ -126,10 +121,6 @@ class Socket {
         buffer = string(bufferSize, 0);
         connected = false;
     }
-    Socket(string domain) {
-        *this = Socket();
-        this->domain = domain;
-    }
 
     ~Socket() {
 #ifdef WIN32
@@ -172,7 +163,8 @@ class Socket {
 
     bool connect(string domain) {
         addrinfo *t = (resolveDomain(domain));
-        if (!t) return false;
+        if (!t)
+            return false;
         return connect(t);
     }
 
@@ -209,7 +201,7 @@ class Socket {
                 if (numEvent && pfds[0].revents & POLLIN) {
                     n = recv(sockfd, &buffer[cached], bufferSize - cached, 0);
                     cached += n;
-                    cout << n << '\n';
+                    /* cout << n << '\n'; */
                 } else
                     return false;
                 contentDownloaded += n;
@@ -229,16 +221,11 @@ class Socket {
                         contentDownloaded -= start;
                     }
                 }
-                if (chunked) {
-                    if (buffer[cached - 1] == '\n' &&
-                        buffer[cached - 2] == '\r' &&
-                        buffer[cached - 3] == '\n' &&
-                        buffer[cached - 4] == '\r')
-                        done = true;
-                } else {
-                    if (contentDownloaded >= contentLength)
-                        done = true;
-                }
+                if ((chunked && buffer[cached - 1] == '\n' &&
+                     buffer[cached - 2] == '\r' && buffer[cached - 3] == '\n' &&
+                     buffer[cached - 4] == '\r') ||
+                    (!chunked && contentDownloaded >= contentLength))
+                    done = true;
                 if (done || n == 0) {
                     goto writeLast;
                 }
@@ -263,9 +250,10 @@ class Socket {
         if (!filesystem::exists(path))
             filesystem::create_directory(path);
         addressProcess(url, domain, filePath, fileName, type);
-        if (!this->connected)
-            if (!connect(domain)) return false;
-        cout << fileName << ' ' << filePath << '\n';
+        if (!this->connected && !connect(domain))
+            return false;
+        cout << fileName << ' ' << filePath << " \033[93mdownloading\033[0m"
+             << '\n';
         request = getRequest(domain, filePath, fileName, "GET", true, type);
         /* cout << request << '\n'; */
         if (!sendRequest(request))
@@ -290,11 +278,11 @@ class Socket {
             ifstream folderHtml(path + domain + "_" + fileName + ".html");
             ostringstream ss;
             ss << folderHtml.rdbuf();
-            string str = ss.str();
-            vector<string> links = getLinksOfFolder(url, str);
+            vector<string> links = getLinksOfFolder(url, ss.str());
             for (string &link : links)
                 this->addToQueue(link, path + domain + "_" + fileName + "/");
         }
+        cout << fileName << ' ' << filePath << " \033[92mOK\n\033[0m";
         return true;
     }
 
@@ -307,6 +295,8 @@ class Socket {
         while (!downloadQueue.empty()) {
             status = download(downloadQueue.front().first,
                               downloadQueue.front().second);
+            if (!status)
+                cout << domain << "\033[91mtimeout\033[0m\n";
             downloadQueue.pop();
         }
         return status;
@@ -321,7 +311,7 @@ class Socket {
 int main(int argc, char *argv[]) {
 #ifdef WIN32
     WSADATA d;
-    if (WSAStartup(MAKEWORD(2, 2), &d)) 
+    if (WSAStartup(MAKEWORD(2, 2), &d))
         return 0;
 #endif
     vector<Socket> sockets;
@@ -336,7 +326,8 @@ int main(int argc, char *argv[]) {
     vector<future<bool>> socketStatus;
     for (Socket &s : sockets)
         socketStatus.push_back(async(launch::async, &Socket::processQueue, &s));
-    for (int i=0;i<socketStatus.size();i++)
-        if (!socketStatus[i].get()) cout << "SOCKET "<< i << " FAILED!\n";
+    for (int i = 0; i < socketStatus.size(); i++)
+        if (!socketStatus[i].get())
+            cout << "SOCKET " << i << " \033[91mFAILED!\n\033[0m";
     return 0;
 }
