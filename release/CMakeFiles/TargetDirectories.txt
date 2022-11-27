@@ -1,0 +1,3 @@
+/Users/hoangkhoa/code/socketSeminar/release/CMakeFiles/socket.dir
+/Users/hoangkhoa/code/socketSeminar/release/CMakeFiles/edit_cache.dir
+/Users/hoangkhoa/code/socketSeminar/release/CMakeFiles/rebuild_cache.dir
