@@ -17,10 +17,11 @@ vector<string> getLinksOfFolder(string &url, string html) {
     while (lastFound != -1) {
         lastFound = html.find("href=\"", lastFound + 6);
         quote = html.find('"', lastFound + 6);
-        if (lastFound != -1 && isalnum(html[lastFound + 6]) &&
-            html.substr(lastFound + 6, 4) != "http")
-            links.push_back(url +
-                            html.substr(lastFound + 6, quote - lastFound - 6));
+        if (lastFound != -1 && (isalnum(html[lastFound + 6]) || html[lastFound + 6] == '.')){
+            string s = html.substr(lastFound + 6, quote - lastFound - 6);
+            if (s.find("//") == string::npos && html.find("javascript:") == string::npos)
+                links.push_back(url + s);
+        }
     }
     return links;
 }
@@ -31,7 +32,7 @@ addrinfo *resolveDomain(string domain) {
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
-    if (getaddrinfo(&domain[0], "http", &hints, &res)){
+    if (getaddrinfo(&domain[0], "http", &hints, &res)) {
         cout << domain << " \033[91mfailed to resolve\n\033[0m\n";
         return NULL;
     }
@@ -126,6 +127,83 @@ class Socket {
 #endif
     }
 
+    bool connect(string domain) {
+        addrinfo *t = (resolveDomain(domain));
+        if (!t) {
+            cout << domain << " \033[91mfailed to connect\n\033[0m\n";
+            return false;
+        }
+        return connect(t);
+    }
+
+    bool download(string &url, string path) {
+        string filePath, addressString, fileName, request, html;
+        ofstream fout;
+        linkType type;
+        if (!filesystem::exists(path))
+            filesystem::create_directory(path);
+        addressProcess(url, domain, filePath, fileName, type);
+        if (!this->connected && !connect(domain))
+            return false;
+        cout << fileName << ' ' << filePath
+             << " \033[93;5mdownloading\033[0m\n";
+        request = getRequest(domain, filePath, fileName, "GET", true, type);
+        if (!sendRequest(request))
+            return false;
+        switch (type) {
+        case linkType::file:
+            fout.open(path + ((path == "./") ? (domain + "_") : "") + fileName,
+                      ios::binary);
+            break;
+        case linkType::folder:
+        case linkType::unknown:
+            if (fileName.empty())
+                fileName = "index";
+            fout.open(path + domain + "_" + fileName + ".html", ios::binary);
+        }
+        if (!readResponse(fout))
+            return false;
+        fout.close();
+        if (type == linkType::folder) {
+            ifstream folderHtml(path + domain + "_" + fileName + ".html");
+            ostringstream ss;
+            ss << folderHtml.rdbuf();
+            vector<string> links = getLinksOfFolder(url, ss.str());
+            for (string &link : links)
+                this->addToQueue(link, path + domain + "_" + fileName + "/");
+        }
+        cout << fileName << ' ' << filePath << " \033[92mok\n\033[0m\n";
+        return true;
+    }
+
+    void addToQueue(string url, string path = "./") {
+        downloadQueue.push({url, path});
+    }
+
+    bool socketProcess() {
+#ifdef WIN32
+        WSADATA d;
+        WSAStartup(MAKEWORD(2, 2), &d);
+#endif
+        int status = false;
+        while (!downloadQueue.empty()) {
+            status = download(downloadQueue.front().first,
+                              downloadQueue.front().second);
+            if (!status)
+                cout << downloadQueue.front().first
+                     << " \033[91mfailed\033[0m\n";
+            downloadQueue.pop();
+        }
+#ifdef WIN32
+        WSACleanup();
+#endif
+        return status;
+    };
+
+  private:
+    int sockfd;
+    string buffer;
+    queue<pair<string, string>> downloadQueue;
     bool connect(addrinfo *addr) {
 #ifdef WIN32
         u_long nonBlock = 1;
@@ -152,14 +230,6 @@ class Socket {
         freeaddrinfo(addr);
         return connected;
     }
-
-    bool connect(string domain) {
-        addrinfo *t = (resolveDomain(domain));
-        if (!t)
-            return false;
-        return connect(t);
-    }
-
     bool sendRequest(string &request) {
         bool status = false;
         pollfd pfds[1];
@@ -173,7 +243,8 @@ class Socket {
         if (numEvent && pfds[0].revents & POLLOUT) {
             ::send(sockfd, request.c_str(), request.length(), 0);
             status = true;
-        }
+        } else
+            cout << domain << " \033[91mcan't send request\n\033[0m\n";
         return status;
     }
 
@@ -194,13 +265,26 @@ class Socket {
                     n = recv(sockfd, &buffer[cached], bufferSize - cached, 0);
                     cached += n;
                     /* cout << n << '\n'; */
-                } else
+                } else {
+                    cout << domain << " \033[91mtimed out\n\033[0m\n";
                     return false;
+                }
                 contentDownloaded += n;
                 if (!passedHeader) {
                     int headerEnding =
                         buffer.find("\r\n\r\n", max(cached - 3 - n, 0));
                     if (headerEnding != -1) {
+                        if (strtol(&buffer[9], 0, 10) / 100 != 2) {
+                            if (strtol(&buffer[9], 0, 10) == 100)
+                                headerEnding =
+                                    buffer.find("\r\n\r\n", headerEnding + 4);
+                            else {
+                                cout
+                                    << buffer.substr(9, buffer.find("\r\n") - 9)
+                                    << '\n';
+                                return false;
+                            }
+                        }
                         chunked = buffer.find("chunked") != -1;
                         if (!chunked) {
                             int contentLengthPos =
@@ -234,75 +318,6 @@ class Socket {
         }
         return true;
     }
-
-    bool download(string &url, string path) {
-        string filePath, addressString, fileName, request, html;
-        ofstream fout;
-        linkType type;
-        if (!filesystem::exists(path))
-            filesystem::create_directory(path);
-        addressProcess(url, domain, filePath, fileName, type);
-        if (!this->connected && !connect(domain))
-            return false;
-        cout << fileName << ' ' << filePath << " \033[93mdownloading\033[0m\n";
-        request = getRequest(domain, filePath, fileName, "GET", true, type);
-        if (!sendRequest(request))
-            return false;
-        switch (type) {
-        case linkType::file:
-            fout.open(path + ((path == "./") ? (domain + "_") : "") + fileName,
-                      ios::binary);
-            break;
-        case linkType::folder:
-        case linkType::unknown:
-            if (fileName.empty())
-                fileName = "index";
-            fout.open(path + ((path == "./") ? (domain + "_") : "") + fileName +
-                          ".html",
-                      ios::binary);
-        }
-        if (!readResponse(fout))
-            return false;
-        fout.close();
-        if (type == linkType::folder) {
-            ifstream folderHtml(path + domain + "_" + fileName + ".html");
-            ostringstream ss;
-            ss << folderHtml.rdbuf();
-            vector<string> links = getLinksOfFolder(url, ss.str());
-            for (string &link : links)
-                this->addToQueue(link, path + domain + "_" + fileName + "/");
-        }
-        cout << fileName << ' ' << filePath << " \033[92mOK\n\033[0m\n";
-        return true;
-    }
-
-    void addToQueue(string url, string path = "./") {
-        downloadQueue.push({url, path});
-    }
-
-    bool socketProcess() {
-#ifdef WIN32
-        WSADATA d;
-        WSAStartup(MAKEWORD(2, 2), &d);
-#endif
-        int status = false;
-        while (!downloadQueue.empty()) {
-            status = download(downloadQueue.front().first,
-                              downloadQueue.front().second);
-            if (!status)
-                cout << domain << "\033[91mtimed out\033[0m\n";
-            downloadQueue.pop();
-        }
-#ifdef WIN32
-        WSACleanup();
-#endif
-        return status;
-    };
-
-  private:
-    int sockfd;
-    string buffer;
-    queue<pair<string, string>> downloadQueue;
 };
 
 int main(int argc, char *argv[]) {
@@ -311,15 +326,18 @@ int main(int argc, char *argv[]) {
         cout << "Usage: " << argv[0] << " [url1] [url2]..\n";
         return 0;
     }
+    char *lastSlash = strrchr(argv[0], '/');
+    if (lastSlash) {
+        *lastSlash = 0;
+        chdir(argv[0]);
+    }
     for (int i = 1; i < argc; i++) {
         sockets.push_back(Socket());
         sockets.back().addToQueue(argv[i]);
     }
     vector<future<bool>> socketStatus;
     for (Socket &s : sockets)
-        socketStatus.push_back(async(launch::async, &Socket::socketProcess, &s));
-    for (int i = 0; i < socketStatus.size(); i++)
-        if (!socketStatus[i].get())
-            cout << "SOCKET " << i << " \033[91mFAILED!\n\033[0m";
+        socketStatus.push_back(
+            async(launch::async, &Socket::socketProcess, &s));
     return 0;
 }
