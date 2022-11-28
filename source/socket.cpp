@@ -17,9 +17,11 @@ vector<string> getLinksOfFolder(string &url, string html) {
     while (lastFound != -1) {
         lastFound = html.find("href=\"", lastFound + 6);
         quote = html.find('"', lastFound + 6);
-        if (lastFound != -1 && (isalnum(html[lastFound + 6]) || html[lastFound + 6] == '.')){
+        if (lastFound != -1 &&
+            (isalnum(html[lastFound + 6]) || html[lastFound + 6] == '.')) {
             string s = html.substr(lastFound + 6, quote - lastFound - 6);
-            if (s.find("//") == string::npos && html.find("javascript:") == string::npos)
+            if (s.find("//") == string::npos &&
+                html.find("javascript:") == string::npos)
                 links.push_back(url + s);
         }
     }

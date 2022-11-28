@@ -2,6 +2,7 @@
 #ifdef WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <direct.h>
 #pragma comment(lib, "ws2_32.lib")
 #else
 #include <sys/types.h>
