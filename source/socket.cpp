@@ -148,7 +148,7 @@ class Socket {
         if (!this->connected && !connect(domain))
             return false;
         cout << fileName << ' ' << filePath
-             << " \033[93;5mdownloading\033[0m\n";
+             << " \033[93mdownloading\033[0m\n";
         request = getRequest(domain, filePath, fileName, "GET", true, type);
         if (!sendRequest(request))
             return false;
@@ -174,7 +174,7 @@ class Socket {
             for (string &link : links)
                 this->addToQueue(link, path + domain + "_" + fileName + "/");
         }
-        cout << fileName << ' ' << filePath << " \033[92mok\n\033[0m\n";
+        cout << fileName << ' ' << filePath << " \033[92mok\033[0m\n";
         return true;
     }
 
@@ -266,7 +266,7 @@ class Socket {
                 if (numEvent && pfds[0].revents & POLLIN) {
                     n = recv(sockfd, &buffer[cached], bufferSize - cached, 0);
                     cached += n;
-                    /* cout << n << '\n'; */
+                    cout <<  setw(20) << domain << ": " << setw(6) << n << "                                      \r" << flush;
                 } else {
                     cout << domain << " \033[91mtimed out\n\033[0m\n";
                     return false;
@@ -281,9 +281,9 @@ class Socket {
                                 headerEnding =
                                     buffer.find("\r\n\r\n", headerEnding + 4);
                             else {
-                                cout
+                                cout << " \033[91m" 
                                     << buffer.substr(9, buffer.find("\r\n") - 9)
-                                    << '\n';
+                                    << "\n\033[0m\n";
                                 return false;
                             }
                         }
@@ -323,6 +323,8 @@ class Socket {
 };
 
 int main(int argc, char *argv[]) {
+    ios_base::sync_with_stdio(false);
+    cin.tie(0);
     vector<Socket> sockets;
     if (argc < 2) {
         cout << "Usage: " << argv[0] << " [url1] [url2]..\n";
