@@ -147,8 +147,7 @@ class Socket {
         addressProcess(url, domain, filePath, fileName, type);
         if (!this->connected && !connect(domain))
             return false;
-        cout << fileName << ' ' << filePath
-             << " \033[93mdownloading\033[0m\n";
+        cout << fileName << ' ' << filePath << " \033[93mdownloading\033[0m\n";
         request = getRequest(domain, filePath, fileName, "GET", true, type);
         if (!sendRequest(request))
             return false;
@@ -207,16 +206,16 @@ class Socket {
     string buffer;
     queue<pair<string, string>> downloadQueue;
     bool connect(addrinfo *addr) {
-#ifdef WIN32
-        u_long nonBlock = 1;
-        ioctlsocket(sockfd, FIONBIO, &nonBlock);
-#else
-        fcntl(sockfd, F_SETFL, O_NONBLOCK);
-#endif
         pollfd pfds[1];
         pfds[0].events = POLLOUT;
         for (addrinfo *p = addr; p && !connected; p = p->ai_next) {
             sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+#ifdef WIN32
+            u_long nonBlock = 1;
+            ioctlsocket(sockfd, FIONBIO, &nonBlock);
+#else
+            fcntl(sockfd, F_SETFL, O_NONBLOCK);
+#endif
             pfds[0].fd = sockfd;
             connected = !::connect(sockfd, p->ai_addr, p->ai_addrlen);
 #ifdef WIN32
@@ -228,6 +227,12 @@ class Socket {
                 connected = true;
                 break;
             }
+            cout << domain << " \033[91mtimed out\n\033[0m\n";
+#ifdef WIN32
+            closesocket(sockfd);
+#else
+            close(sockfd);
+#endif
         }
         freeaddrinfo(addr);
         return connected;
@@ -266,7 +271,8 @@ class Socket {
                 if (numEvent && pfds[0].revents & POLLIN) {
                     n = recv(sockfd, &buffer[cached], bufferSize - cached, 0);
                     cached += n;
-                    cout <<  setw(20) << domain << ": " << setw(6) << n << "                                      \r" << flush;
+                    /* cout <<  setw(20) << domain << ": " << setw(6) << n << "
+                     * \r" << flush; */
                 } else {
                     cout << domain << " \033[91mtimed out\n\033[0m\n";
                     return false;
@@ -281,7 +287,8 @@ class Socket {
                                 headerEnding =
                                     buffer.find("\r\n\r\n", headerEnding + 4);
                             else {
-                                cout << " \033[91m" 
+                                cout
+                                    << " \033[91m"
                                     << buffer.substr(9, buffer.find("\r\n") - 9)
                                     << "\n\033[0m\n";
                                 return false;
